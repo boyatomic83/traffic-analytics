@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "traffic_analytics"
+version = "0.1.0"
+description = "Vehicle detection, tracking, line counting and speed estimation on fixed-camera traffic video (ONNX Runtime, CPU)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "AGPL-3.0-or-later"  # Ultralytics is AGPL-3.0
+# Core = what the CPU pipeline needs. Lower bounds only; exact pins go in
+# requirements.txt after the first green run (SPEC §11).
+dependencies = [
+    "numpy>=1.24",
+    "opencv-python-headless>=4.8",
+    "onnxruntime>=1.17",
+    "supervision>=0.22",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# Training / export / benchmark / evaluation (Kaggle). Install torch separately
+# on CPU-only machines: pip install torch --index-url https://download.pytorch.org/whl/cpu
+train = ["ultralytics>=8.3", "onnx>=1.15"]
+app = ["gradio>=4.0", "huggingface_hub>=0.20"]
+dev = ["pytest>=7.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

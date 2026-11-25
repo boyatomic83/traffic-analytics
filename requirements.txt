@@ -1,0 +1,4 @@
+# Runtime dependencies for the app.
+# Intentionally unpinned for now: per SPEC §11 these are pinned to the exact
+# versions that actually ran, after the first green end-to-end run (M5/M6).
+# Until then, install the package instead:  pip install -e .

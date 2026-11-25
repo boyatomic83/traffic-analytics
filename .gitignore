@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+build/
+dist/
+
+# Weights and large artifacts -> Hugging Face model repo, never git
+*.pt
+*.pth
+*.onnx
+*.engine
+runs/
+datasets/
+data/
+outputs/
+*.mp4
+!app/samples/*.mp4
+
+# Generated configs (contain machine-specific paths)
+configs/data.yaml
+
+# Notebooks / editors
+.ipynb_checkpoints/
+.vscode/
+.idea/
+
+# Secrets
+.env
+.claude/settings.local.json
