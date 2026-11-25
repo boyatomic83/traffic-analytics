@@ -31,3 +31,6 @@ configs/data.yaml
 # Secrets
 .env
 .claude/settings.local.json
+
+# Personal instructions scratch file
+info.txt

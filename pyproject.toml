@@ -13,7 +13,7 @@ license = "AGPL-3.0-or-later"  # Ultralytics is AGPL-3.0
 # requirements.txt after the first green run (SPEC §11).
 dependencies = [
     "numpy>=1.24",
-    "opencv-python-headless>=4.8",
+    "opencv-python-headless>=4.8,<5",  # Kaggle ships 4.x; 5.x is a major API change
     "onnxruntime>=1.17",
     "supervision>=0.22",
     "pyyaml>=6.0",
