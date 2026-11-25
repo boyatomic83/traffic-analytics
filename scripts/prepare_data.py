@@ -47,6 +47,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--val-frac", type=float, default=0.1)
     p.add_argument("--test-frac", type=float, default=0.1, help="Only used without an official test set.")
     p.add_argument("--loc-threshold", type=float, default=0.75, help="Background NCC to merge sequences into one location.")
+    p.add_argument("--location-links", type=Path, default=Path("configs/location_links.yaml"),
+                   help="YAML of curated same-location sequence lists (missing file = no links).")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--workers", type=int, default=4, help="Threads for image I/O.")
     p.add_argument("--viz", type=int, default=5, help="Number of label-overlay images to draw.")
@@ -103,7 +105,9 @@ def main(argv: list[str] | None = None) -> int:
 
     # 3. Location groups ----------------------------------------------------
     sigs = {s.name: detrac.location_signature(s.image_dir, list(anns[s.name].frames)) for s in seqs}
-    groups = detrac.group_by_location(sigs, args.loc_threshold)
+    links = detrac.load_location_links(args.location_links)
+    log.info("Curated location links: %d lists from %s", len(links), args.location_links)
+    groups = detrac.group_by_location(sigs, args.loc_threshold, links)
     group_sizes = Counter(groups.values())
     log.info("Location groups: %d (sizes: %s)", len(group_sizes), sorted(group_sizes.values(), reverse=True))
 

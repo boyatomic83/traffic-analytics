@@ -285,10 +285,24 @@ def session_key(name: str) -> str:
     return name[:-1]
 
 
-def group_by_location(signatures: dict[str, np.ndarray | None], threshold: float = 0.75) -> dict[str, int]:
+def load_location_links(path: Path | None) -> list[list[str]]:
+    """Read curated same-location links (``links: [[MVI_a, MVI_b, ...], ...]``) from YAML."""
+    if path is None or not Path(path).exists():
+        return []
+    import yaml
+
+    return [list(map(str, grp)) for grp in (yaml.safe_load(Path(path).read_text()) or {}).get("links", [])]
+
+
+def group_by_location(
+    signatures: dict[str, np.ndarray | None],
+    threshold: float = 0.75,
+    links: list[list[str]] | None = None,
+) -> dict[str, int]:
     """Group sequences filmed at the same camera location.
 
-    1. Must-link: sequences with the same :func:`session_key` start in one cluster.
+    1. Must-link: sequences with the same :func:`session_key`, or listed together
+       in ``links`` (curated by eye), start in one cluster.
     2. Average-linkage agglomeration: repeatedly merge the two clusters whose mean
        pairwise background NCC is highest, while it is ≥ ``threshold``. Average
        (not single) linkage prevents chaining A~B~C into one group when A and C
@@ -298,9 +312,23 @@ def group_by_location(signatures: dict[str, np.ndarray | None], threshold: float
     0..G-1 in order of each group's first (sorted) sequence name.
     """
     names = sorted(signatures)
+    parent = {n: n for n in names}
+
+    def find(n: str) -> str:
+        while parent[n] != n:
+            parent[n] = parent[parent[n]]
+            n = parent[n]
+        return n
+
+    by_session: dict[str, list[str]] = {}
+    for n in names:
+        by_session.setdefault(session_key(n), []).append(n)
+    for grp in list(by_session.values()) + [[n for n in g if n in parent] for g in (links or [])]:
+        for n in grp[1:]:
+            parent[find(n)] = find(grp[0])
     clusters: dict[str, list[str]] = {}
     for n in names:
-        clusters.setdefault(session_key(n), []).append(n)
+        clusters.setdefault(find(n), []).append(n)
     cl = list(clusters.values())
 
     def sim(a: str, b: str) -> float | None:

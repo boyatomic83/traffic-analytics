@@ -1,0 +1,14 @@
+# Sequences filmed at the same camera location that background matching misses
+# (zoom/pan changes between recordings). Each list is forced into one location group.
+# Curated by eye from viz/location_groups.jpg of the 2026-11-25 run; conservative:
+# when unsure, sequences are linked, since over-linking only costs split flexibility
+# while a missed link leaks a location between train and val.
+links:
+  - [MVI_20011, MVI_20012, MVI_20051, MVI_20052, MVI_20061, MVI_20062, MVI_20063, MVI_20064, MVI_20065]  # bus-stop road
+  - [MVI_39801, MVI_39811, MVI_39821]                                    # road with blue signs
+  - [MVI_40161, MVI_40162, MVI_40171, MVI_40172, MVI_40181]              # fenced road, yellow lines
+  - [MVI_40211, MVI_40212, MVI_40213, MVI_41063, MVI_41073,
+     MVI_63552, MVI_63553, MVI_63554, MVI_63561, MVI_63562, MVI_63563]   # highway with hedge median
+  - [MVI_40732, MVI_40742, MVI_40743, MVI_40751, MVI_40752]              # fenced road with buses
+  - [MVI_40863, MVI_40864, MVI_40871]                                    # rainy intersection with buses
+  - [MVI_40962, MVI_40963, MVI_40981]                                    # dusk road

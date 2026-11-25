@@ -156,6 +156,16 @@ def test_same_session_is_always_one_group() -> None:
     assert detrac.session_key("MVI_40901") == "MVI_4090"
 
 
+def test_curated_links_merge_groups(tmp_path: Path) -> None:
+    f = tmp_path / "links.yaml"
+    f.write_text("links:\n  - [MVI_11111, MVI_33333, MVI_99999]\n")  # unknown name is ignored
+    links = detrac.load_location_links(f)
+    sigs = {"MVI_11111": np.array([1.0, -1.0]), "MVI_22222": np.array([1.0, -1.0]), "MVI_33333": np.array([-1.0, 1.0])}
+    groups = detrac.group_by_location(sigs, threshold=0.99, links=links)
+    assert groups["MVI_11111"] == groups["MVI_33333"]
+    assert detrac.load_location_links(tmp_path / "missing.yaml") == []
+
+
 def _split_inputs(root: Path):
     seqs, _ = detrac.discover(root)
     anns = {s.name: detrac.parse_sequence_xml(s.xml_path) for s in seqs}
