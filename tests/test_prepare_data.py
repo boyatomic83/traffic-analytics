@@ -27,6 +27,7 @@ SEQS = [
     ("MVI_40001", "Test", 3), ("MVI_40002", "Test", 3),
 ]
 IGNORED = (150.0, 0.0, 40.0, 30.0)  # left, top, width, height (top-right corner)
+PARTIAL = (130, 10, 30, 20)  # x 130-160 overlaps the ignore region; centre (145, 20) is outside
 
 
 def _background(loc: int) -> np.ndarray:
@@ -44,6 +45,11 @@ def _xml(name: str, types: list[str]) -> str:
             f'<attribute orientation="0" speed="1" trajectory_length="1" truncation_ratio="0" vehicle_type="{t}"/></target>'
             for i, t in enumerate(types)
         ]
+        # kept box that overlaps the ignore region (centre outside) -> must stay visible
+        targets.append(
+            f'<target id="98"><box left="{PARTIAL[0]}" top="{PARTIAL[1]}" width="{PARTIAL[2]}" height="{PARTIAL[3]}"/>'
+            f'<attribute vehicle_type="car"/></target>'
+        )
         # one box whose centre is inside the ignore region -> must be dropped
         targets.append(
             f'<target id="99"><box left="160" top="5" width="10" height="10"/>'
@@ -134,6 +140,22 @@ def test_location_grouping_recovers_cameras(fake_detrac: Path) -> None:
             assert (groups[a] == groups[b]) == (expected[a] == expected[b]), (a, b)
 
 
+def test_average_linkage_does_not_chain() -> None:
+    # a~b = 0.71, b~c = 0.71, a~c = 0  -> single linkage would chain all three
+    r2 = np.sqrt(2.0)
+    sigs = {"MVI_11111": np.array([r2, 0.0]), "MVI_22222": np.array([1.0, 1.0]), "MVI_33333": np.array([0.0, r2])}
+    groups = detrac.group_by_location(sigs, threshold=0.7)
+    assert len(set(groups.values())) == 2
+    assert groups["MVI_11111"] != groups["MVI_33333"]
+
+
+def test_same_session_is_always_one_group() -> None:
+    sigs = {"MVI_40901": np.array([1.0, -1.0]), "MVI_40902": np.array([-1.0, 1.0]), "MVI_50001": None}
+    groups = detrac.group_by_location(sigs, threshold=0.9)
+    assert groups["MVI_40901"] == groups["MVI_40902"] != groups["MVI_50001"]
+    assert detrac.session_key("MVI_40901") == "MVI_4090"
+
+
 def _split_inputs(root: Path):
     seqs, _ = detrac.discover(root)
     anns = {s.name: detrac.parse_sequence_xml(s.xml_path) for s in seqs}
@@ -173,12 +195,17 @@ def test_convert_blacks_out_ignore_and_drops_boxes(fake_detrac: Path, tmp_path: 
     st = detrac.convert_sequence(seq, ann, "train", tmp_path, stride=4)
     assert st["images"] == 3  # frames 1, 5, 9
     assert st["dropped_ignored"] == 3  # one per frame
-    assert sum(st["boxes"]) == 6
-    img = cv2.imread(str(tmp_path / "images" / "train" / f"{seq.name}_img00001.jpg"))
+    assert sum(st["boxes"]) == 9  # 2 typed + 1 partial-overlap car, per frame
+    img = cv2.imread(str(tmp_path / "images" / "train" / f"{seq.name}_img00001.jpg")).astype(int)
+    src = cv2.imread(str(seq.image_dir / "img00001.jpg")).astype(int)
     l, t, w, h = map(int, IGNORED)
-    assert img[t + 2 : t + h - 2, l + 2 : l + w - 2].max() <= 10  # black (JPEG tolerance)
+    # ignore region is black except where it overlaps the kept box (x 150-160, y 10-30)
+    assert img[t + 2 : t + h - 2, 162 : l + w - 2].max() <= 10
+    assert img[0:8, l + 2 : l + w - 2].max() <= 10
+    overlap = (slice(12, 28), slice(151, 159))
+    assert np.abs(img[overlap] - src[overlap]).mean() < 8  # restored, not black
     lines = (tmp_path / "labels" / "train" / f"{seq.name}_img00001.txt").read_text().splitlines()
-    assert len(lines) == 2 and all(len(x.split()) == 5 for x in lines)
+    assert len(lines) == 3 and all(len(x.split()) == 5 for x in lines)
 
 
 def test_convert_rejects_unmapped_type(fake_detrac: Path, tmp_path: Path) -> None:

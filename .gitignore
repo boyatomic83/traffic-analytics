@@ -32,5 +32,6 @@ configs/data.yaml
 .env
 .claude/settings.local.json
 
-# Personal instructions scratch file
+# Personal instructions scratch file + downloaded Kaggle outputs for review
 info.txt
+kaggle_out/

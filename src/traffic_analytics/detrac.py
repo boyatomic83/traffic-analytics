@@ -276,33 +276,58 @@ def location_signature(image_dir: Path, frame_nums: list[int], n_frames: int = 5
     return (bg - bg.mean()) / (bg.std() + 1e-6)
 
 
-def group_by_location(signatures: dict[str, np.ndarray | None], threshold: float = 0.75) -> dict[str, int]:
-    """Cluster sequences whose background NCC ≥ ``threshold`` (union-find over pairs).
+def session_key(name: str) -> str:
+    """Recording-session key: the sequence ID without its last digit (``MVI_40901`` → ``MVI_4090``).
 
-    Sequences without a signature get their own group. Group ids are 0..G-1 in
-    order of each group's first (sorted) sequence name.
+    In UA-DETRAC, IDs that differ only in the last digit were recorded back to
+    back at the same place, so they are always kept in one location group.
+    """
+    return name[:-1]
+
+
+def group_by_location(signatures: dict[str, np.ndarray | None], threshold: float = 0.75) -> dict[str, int]:
+    """Group sequences filmed at the same camera location.
+
+    1. Must-link: sequences with the same :func:`session_key` start in one cluster.
+    2. Average-linkage agglomeration: repeatedly merge the two clusters whose mean
+       pairwise background NCC is highest, while it is ≥ ``threshold``. Average
+       (not single) linkage prevents chaining A~B~C into one group when A and C
+       look nothing alike.
+
+    Sequences without a signature only join via their session. Group ids are
+    0..G-1 in order of each group's first (sorted) sequence name.
     """
     names = sorted(signatures)
-    parent = {n: n for n in names}
-
-    def find(n: str) -> str:
-        while parent[n] != n:
-            parent[n] = parent[parent[n]]
-            n = parent[n]
-        return n
-
-    valid = [n for n in names if signatures[n] is not None]
-    for i, a in enumerate(valid):
-        sa = signatures[a]
-        for b in valid[i + 1 :]:
-            if float((sa * signatures[b]).mean()) >= threshold:
-                parent[find(b)] = find(a)
-    root_to_gid: dict[str, int] = {}
-    groups: dict[str, int] = {}
+    clusters: dict[str, list[str]] = {}
     for n in names:
-        r = find(n)
-        groups[n] = root_to_gid.setdefault(r, len(root_to_gid))
-    return groups
+        clusters.setdefault(session_key(n), []).append(n)
+    cl = list(clusters.values())
+
+    def sim(a: str, b: str) -> float | None:
+        sa, sb = signatures[a], signatures[b]
+        return None if sa is None or sb is None else float((sa * sb).mean())
+
+    pair = {(a, b): sim(a, b) for i, a in enumerate(names) for b in names[i + 1 :]}
+
+    def link(c1: list[str], c2: list[str]) -> float:
+        vals = [pair[(a, b) if a < b else (b, a)] for a in c1 for b in c2]
+        vals = [v for v in vals if v is not None]
+        return sum(vals) / len(vals) if vals else -1.0
+
+    while len(cl) > 1:
+        best, bi, bj = -2.0, -1, -1
+        for i in range(len(cl)):
+            for j in range(i + 1, len(cl)):
+                s = link(cl[i], cl[j])
+                if s > best:
+                    best, bi, bj = s, i, j
+        if best < threshold:
+            break
+        cl[bi] = cl[bi] + cl[bj]
+        del cl[bj]
+
+    cl.sort(key=lambda c: min(c))
+    return {n: gid for gid, c in enumerate(cl) for n in c}
 
 
 # ------------------------------------------------------------------------ splits
@@ -454,7 +479,8 @@ def convert_sequence(
     """Write images and YOLO labels of one sequence into ``out_root/{images,labels}/split``.
 
     Ignore regions are blacked out in the image and boxes whose centre is inside
-    one are dropped. Raises ``ValueError`` on an unmapped vehicle type.
+    one are dropped; pixels inside kept boxes are restored so labelled vehicles
+    are never partly black. Raises ``ValueError`` on an unmapped vehicle type.
     """
     img_out = Path(out_root) / "images" / split
     lbl_out = Path(out_root) / "labels" / split
@@ -476,6 +502,7 @@ def convert_sequence(
         if not src.exists():
             return 0, np.zeros(len(CLASS_NAMES), dtype=np.int64), 0, 0, False
         lines, counts, n_ign, n_small = [], np.zeros(len(CLASS_NAMES), dtype=np.int64), 0, 0
+        kept: list[Box] = []
         for vt, box in ann.frames[num]:
             if vt not in VEHICLE_TYPE_TO_ID:
                 raise ValueError(f"Unmapped vehicle_type {vt!r} in {seq.name} frame {num}")
@@ -489,11 +516,19 @@ def convert_sequence(
                 continue
             lines.append(line)
             counts[cid] += 1
+            kept.append(box)
         dst = img_out / f"{stem}.jpg"
         if ann.ignored:
-            img = cv2.imread(str(src))
+            orig = cv2.imread(str(src))
+            img = orig.copy()
             for r in ann.ignored:
                 cv2.rectangle(img, (int(r.x1), int(r.y1)), (int(np.ceil(r.x2)), int(np.ceil(r.y2))), (0, 0, 0), -1)
+            # A labelled vehicle that overlaps an ignore region must stay fully visible,
+            # otherwise the model learns boxes around black pixels.
+            for b in kept:
+                x1, y1 = max(0, int(b.x1)), max(0, int(b.y1))
+                x2, y2 = min(img_w, int(np.ceil(b.x2))), min(img_h, int(np.ceil(b.y2)))
+                img[y1:y2, x1:x2] = orig[y1:y2, x1:x2]
             cv2.imwrite(str(dst), img, [cv2.IMWRITE_JPEG_QUALITY, 95])
         else:
             shutil.copyfile(src, dst)
@@ -546,7 +581,7 @@ def draw_yolo_labels(image_path: Path, label_path: Path) -> np.ndarray:
 
 
 def location_contact_sheet(
-    seqs: list[SequenceInfo], groups: dict[str, int], first_frames: dict[str, int], thumb: tuple[int, int] = (160, 90), max_per_row: int = 8
+    seqs: list[SequenceInfo], groups: dict[str, int], first_frames: dict[str, int], thumb: tuple[int, int] = (160, 90), max_per_row: int = 12
 ) -> np.ndarray:
     """One row per location group (up to ``max_per_row`` thumbnails) for eyeballing."""
     by_group: dict[int, list[SequenceInfo]] = {}
