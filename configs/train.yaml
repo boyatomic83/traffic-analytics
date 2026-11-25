@@ -1,0 +1,13 @@
+# M2 training config (Ultralytics train() arguments). CLI flags of scripts/train.py override these.
+# Anything not listed here stays at the Ultralytics default for the installed version.
+model: yolo11n.pt
+imgsz: 640
+epochs: 40          # final value set after the 1-epoch timing run on Kaggle
+patience: 10        # early stopping
+batch: 32           # total across GPUs (16 per T4 with device "0,1")
+device: "0,1"       # Kaggle T4 x2 (DDP); fall back to "0" if DDP fails
+workers: 2          # dataloader workers per GPU process (Kaggle has 4 CPU cores)
+seed: 0
+deterministic: true
+close_mosaic: 10
+plots: true

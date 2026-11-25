@@ -22,7 +22,7 @@ dependencies = [
 [project.optional-dependencies]
 # Training / export / benchmark / evaluation (Kaggle). Install torch separately
 # on CPU-only machines: pip install torch --index-url https://download.pytorch.org/whl/cpu
-train = ["ultralytics>=8.3", "onnx>=1.15"]
+train = ["ultralytics>=8.3", "onnx>=1.15", "huggingface_hub>=0.20"]
 app = ["gradio>=4.0", "huggingface_hub>=0.20"]
 dev = ["pytest>=7.0"]
 
